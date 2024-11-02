@@ -1,3 +1,7 @@
+# To not reveal google service_account.json file (name is unique and therefore not included in .gitignore)
+.env
+*.json
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
