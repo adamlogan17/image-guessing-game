@@ -28,19 +28,32 @@ def upload_image_to_drive(image_path, service):
     
     # Get the public URL of the uploaded image
     image_url = f'https://drive.google.com/uc?id={file_id}'
-    return image_url
+    return image_url, file_id
+
+def delete_file_from_drive(image_id, service):
+    try:
+        service.files().delete(fileId=image_id).execute()
+        print(f'File with ID {image_id} was deleted permanently.')
+    except Exception as e:
+        print(f'An error occurred: {e}')
+
+def clear_service_account_drive(service):
+    files = service.files().list().execute().get('files', [])
+    print(files)
+    for file in files:
+        delete_file_from_drive(file.get('id'), service)
 
 def create_google_slide_with_image(image_path, presentation_title='New Presentation'):
     # Authenticate and construct the service
     creds = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_JSON, scopes=SCOPES)
-    service = build('slides', 'v1', credentials=creds)
+    slide_service = build('slides', 'v1', credentials=creds)
     drive_service = build('drive', 'v3', credentials=creds)
 
     # Upload the image to Google Drive and get the public URL
-    image_url = upload_image_to_drive(image_path, drive_service)
+    image_url, drive_id = upload_image_to_drive(image_path, drive_service)
 
     # Create a new presentation
-    presentation = service.presentations().create(body={'title': presentation_title}).execute()
+    presentation = slide_service.presentations().create(body={'title': presentation_title}).execute()
     presentation_id = presentation['presentationId']
 
     # Define the slide dimensions
@@ -57,7 +70,7 @@ def create_google_slide_with_image(image_path, presentation_title='New Presentat
             }
         }
     ]
-    response = service.presentations().batchUpdate(presentationId=presentation_id, body={'requests': requests}).execute()
+    response = slide_service.presentations().batchUpdate(presentationId=presentation_id, body={'requests': requests}).execute()
     slide_id = response['replies'][0]['createSlide']['objectId']
 
     # Add the image to the slide
@@ -84,7 +97,7 @@ def create_google_slide_with_image(image_path, presentation_title='New Presentat
             }
         }
     ]
-    service.presentations().batchUpdate(presentationId=presentation_id, body={'requests': requests}).execute()
+    slide_service.presentations().batchUpdate(presentationId=presentation_id, body={'requests': requests}).execute()
 
     # Share the presentation with your personal Google account
     drive_service.permissions().create(
@@ -96,9 +109,14 @@ def create_google_slide_with_image(image_path, presentation_title='New Presentat
         }
     ).execute()
 
+    delete_file_from_drive(drive_id, drive_service)
+
     print(f'Created presentation with ID: {presentation_id}')
 
 if __name__ == '__main__':
     # Example usage
     image_path = './images/AbbeyGardens_EN-GB0442009047_UHD.jpg'
-    create_google_slide_with_image(image_path, presentation_title='Testing Guessing Game Presentation')
+    # create_google_slide_with_image(image_path, presentation_title='Testing Guessing Game Presentation')
+    creds = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_JSON, scopes=SCOPES)
+
+    drive_service = build('drive', 'v3', credentials=creds)
