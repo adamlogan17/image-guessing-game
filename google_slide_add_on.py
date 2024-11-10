@@ -42,72 +42,29 @@ def clear_service_account_drive(service):
     for file in files:
         delete_file_from_drive(file.get('id'), service)
 
-def create_google_slide_with_image(paths_to_images, presentation_title='New Presentation'):
-    # NOTE: Maybe split this function up as it is very large
-
-    # Authenticate and construct the service
-    creds = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_JSON, scopes=SCOPES)
-    slide_service = build('slides', 'v1', credentials=creds)
-    drive_service = build('drive', 'v3', credentials=creds)
-
-    # Defined here and only extended to, to allow for multiple requests to be batched
-    alter_content_requests = []
-    drive_images = []
-
-    # Upload the image to Google Drive and get the public URL
-    create_slides_requests = []
-    for image_path in paths_to_images:
-        image_url, drive_id = upload_image_to_drive(image_path, drive_service)
-        drive_images.append({'image_url': image_url, 'drive_id': drive_id})
-
-    # Create a new presentation
-    presentation = slide_service.presentations().create(body={'title': presentation_title}).execute()
-    presentation_id = presentation.get('presentationId')
-
-    # Define the slide dimensions
+def generate_image_slides(presentation, drive_images, service, title='What is this image?'):
     slide_width =  presentation.get('pageSize').get('width').get('magnitude')
     slide_height = presentation.get('pageSize').get('height').get('magnitude')
+    presentation_id = presentation.get('presentationId')
 
-    first_slide_objects = presentation.get('slides')[0].get('pageElements')
-
-    # Adds text to the title slide
-    object_id = None
-    for object in first_slide_objects:
-        if object.get('shape'):
-            if object.get('shape').get('placeholder').get('type') == 'CENTERED_TITLE':
-                object_id = object.get('objectId')
-                text = 'Guess the Image!'
-            if object.get('shape').get('placeholder').get('type') == 'SUBTITLE':
-                object_id = object.get('objectId')
-                text = "Created using 'image-guessing-game' by @adamlogan17"
-        if object_id:
-            alter_content_requests.append({
-                'insertText': {
-                    'objectId': object_id,  # Replace with the object ID of the title placeholder
-                    'text': text,
-                    'insertionIndex': 0 
-                }
-            })
-            object_id = None
-
-    # Creates slides for each photo
-    for image in drive_images:
-        create_slides_requests.append({
-            'createSlide': {
-                'slideLayoutReference': {
-                    'predefinedLayout': 'BLANK'
-                }
-            }
-        })
-    # Should only use the below to create slides
-    create_slides_response = slide_service.presentations().batchUpdate(presentationId=presentation_id, body={'requests': create_slides_requests}).execute()    
+    create_slides_requests = []
 
     # Adds the images to the presentation
     for i in range(0, len(drive_images)):
         image_url = drive_images[i].get('image_url')
-        slide_id = create_slides_response['replies'][i]['createSlide']['objectId']
+        # slide_id = create_slides_response['replies'][i]['createSlide']['objectId']
         image_id = 'image_{}'.format(i)
-        alter_content_requests.extend([
+        text_id = 'text_{}'.format(i)
+        slide_id = 'slide_{}'.format(i)
+        create_slides_requests.extend([
+            {
+                'createSlide': {
+                    'objectId': slide_id,
+                    'slideLayoutReference': {
+                        'predefinedLayout': 'BLANK'
+                    }
+                }
+            },
             {
                 'createImage': {
                     'objectId': image_id,
@@ -127,10 +84,88 @@ def create_google_slide_with_image(paths_to_images, presentation_title='New Pres
                         }
                     }
                 }
+            },
+            {
+                "createShape": {
+                    "objectId": text_id,
+                    "shapeType": "TEXT_BOX",
+                    "elementProperties": {
+                        "pageObjectId": slide_id, 
+                        "size": {
+                            "width": {
+                                "magnitude": 200,
+                                "unit": "PT"
+                            },
+                            "height": {
+                                "magnitude": 50,
+                                "unit": "PT"
+                            }
+                        },
+                        "transform": {
+                            "scaleX": 1,
+                            "scaleY": 1,
+                            "translateX": 20, 
+                            "translateY": 20, 
+                            "unit": "PT"
+                        }
+                    }
+                }
+            },
+            {
+                'insertText': {
+                    'objectId': text_id,
+                    'text': title,
+                    'insertionIndex': 0
+                }
             }
         ])
 
+    service.presentations().batchUpdate(presentationId=presentation_id, body={'requests': create_slides_requests}).execute()
+
+def create_google_slide_with_image(paths_to_images, presentation_title='New Presentation'):
+    # Authenticate and construct the service
+    creds = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_JSON, scopes=SCOPES)
+    slide_service = build('slides', 'v1', credentials=creds)
+    drive_service = build('drive', 'v3', credentials=creds)
+
+    # Defined here and only extended to, to allow for multiple requests to be batched
+    alter_content_requests = []
+    drive_images = []
+
+    # Upload the image to Google Drive and get the public URL
+    for image_path in paths_to_images:
+        image_url, drive_id = upload_image_to_drive(image_path, drive_service)
+        drive_images.append({'image_url': image_url, 'drive_id': drive_id})
+
+    # Create a new presentation
+    presentation = slide_service.presentations().create(body={'title': presentation_title}).execute()
+    presentation_id = presentation.get('presentationId')
+
+    first_slide_objects = presentation.get('slides')[0].get('pageElements')
+
+    # Adds text to the title slide
+    object_id = None
+    for object in first_slide_objects:
+        if object.get('shape'):
+            if object.get('shape').get('placeholder').get('type') == 'CENTERED_TITLE':
+                object_id = object.get('objectId')
+                text = 'Guess the Image!'
+            if object.get('shape').get('placeholder').get('type') == 'SUBTITLE':
+                object_id = object.get('objectId')
+                text = "Created using 'image-guessing-game' by @adamlogan17"
+        if object_id:
+            alter_content_requests.append({
+                'insertText': {
+                    'objectId': object_id,
+                    'text': text,
+                    'insertionIndex': 0
+                }
+            })
+            object_id = None
+    
     slide_service.presentations().batchUpdate(presentationId=presentation_id, body={'requests': alter_content_requests}).execute()
+
+    generate_image_slides(presentation, drive_images, slide_service)
 
     # Share the presentation with your personal Google account
     drive_service.permissions().create(
