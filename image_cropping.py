@@ -72,14 +72,14 @@ def get_images_from_folder(folder_path):
     image_files = [f for f in os.listdir(folder_path) if f.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp', '.gif'))]
     return image_files
 
-def crop_square_folder(folder_path, output_dir, out_ext=None):
+def crop_square_folder(folder_path, output_dir, out_ext=None, cropped_prefix=''):
     image_files = get_images_from_folder(folder_path)
 
     # Iterate over the image files and crop a random square from each
     for image_file in image_files:
         print(f'Cropping image: {image_file}')
         image_path = os.path.join(folder_path, image_file)
-        crop_random_square(image_path, output_dir, output_ext=out_ext, prefix='')
+        crop_random_square(image_path, output_dir, output_ext=out_ext, prefix=cropped_prefix)
 
 
 

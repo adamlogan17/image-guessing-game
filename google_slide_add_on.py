@@ -11,10 +11,6 @@ load_dotenv()
 
 # Define the scope for Google Slides API and Google Drive API
 SCOPES = ['https://www.googleapis.com/auth/presentations', 'https://www.googleapis.com/auth/drive.file']
-SERVICE_ACCOUNT_JSON = os.getenv('SERVICE_ACCOUNT_JSON')
-
-# Stored as an environment variable so there is no accidental exposure of the email
-PERSONAL_EMAIL = os.getenv('PERSONAL_EMAIL')
 
 def convert_emu_to_pt(emu):
     return emu / 12700 
@@ -86,9 +82,9 @@ def batch_create_image_slides(presentation, drive_images, service, requests):
 
     service.presentations().batchUpdate(presentationId=presentation_id, body={'requests': create_slides_requests}).execute()
 
-def create_google_slide_with_image(question_images, presentation_title='New Presentation'):
+def create_image_guess_slides(question_images, personal_email, presentation_title='New Presentation', service_account_json=os.getenv('SERVICE_ACCOUNT_JSON', None)):
     # Authenticate and construct the service
-    creds = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_JSON, scopes=SCOPES)
+    creds = service_account.Credentials.from_service_account_file(service_account_json, scopes=SCOPES)
     slide_service = build('slides', 'v1', credentials=creds)
     drive_service = build('drive', 'v3', credentials=creds)
 
@@ -96,7 +92,7 @@ def create_google_slide_with_image(question_images, presentation_title='New Pres
     alter_content_requests = []
     drive_images = []
 
-    # Upload the image to Google Drive and get the public URL
+    # Upload the images to Google Drive and get the public URL
     for image_path in question_images:
         element = {}
         for key in image_path:
@@ -273,7 +269,7 @@ def create_google_slide_with_image(question_images, presentation_title='New Pres
         body={
             'type': 'user',
             'role': 'writer',
-            'emailAddress': PERSONAL_EMAIL
+            'emailAddress': personal_email
         }
     ).execute()
 
@@ -285,6 +281,7 @@ def create_google_slide_with_image(question_images, presentation_title='New Pres
     print(f'Created presentation with ID: {presentation_id}')
 
 if __name__ == '__main__':
+    SERVICE_ACCOUNT_JSON = os.getenv('SERVICE_ACCOUNT_JSON', None)
     creds = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_JSON, scopes=SCOPES)
     drive_service = build('drive', 'v3', credentials=creds)
     clear_service_account_drive(drive_service)
@@ -300,4 +297,7 @@ if __name__ == '__main__':
         }
     ]
 
-    create_google_slide_with_image(questions, presentation_title='Testing Guessing Game Presentation')
+    # Stored as an environment variable so there is no accidental exposure of the email, in git
+    PERSONAL_EMAIL = os.getenv('PERSONAL_EMAIL')
+
+    create_image_guess_slides(questions, PERSONAL_EMAIL, presentation_title='Testing Guessing Game Presentation')
