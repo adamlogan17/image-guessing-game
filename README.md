@@ -37,8 +37,6 @@ Instructions below found [here](https://stackoverflow.com/questions/46287267/how
 - Decide if the `service` should be created in the `create_google_slide_with_image` function or outside it
 
 - Finish adding all cropped images to google slides
-- Make function that just adds one slide with the image
-- Add answer slides showing the keeping the question title, cropped image (right), uncropped image (left) and 'answer' text along the bottom
 
 - Add slack integration to get profile picture images
 - Modify to use templates for google drive
@@ -55,3 +53,4 @@ Instructions below found [here](https://stackoverflow.com/questions/46287267/how
 
 - [Google Drive API Docs](https://developers.google.com/drive/api/reference/rest/v3)
 - [Google Slides API docs](https://developers.google.com/slides/api/reference/rest)
+- [Units for Slides](https://developers.google.com/slides/api/reference/rest/v1/Unit)

@@ -3,6 +3,8 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from dotenv import load_dotenv
+import copy
+import uuid
 
 # Load environment variables from .env file
 load_dotenv()
@@ -13,6 +15,9 @@ SERVICE_ACCOUNT_JSON = os.getenv('SERVICE_ACCOUNT_JSON')
 
 # Stored as an environment variable so there is no accidental exposure of the email
 PERSONAL_EMAIL = os.getenv('PERSONAL_EMAIL')
+
+def convert_emu_to_pt(emu):
+    return emu / 12700 
 
 def upload_image_to_drive(image_path, service):
     file_metadata = {'name': os.path.basename(image_path)}
@@ -42,20 +47,30 @@ def clear_service_account_drive(service):
     for file in files:
         delete_file_from_drive(file.get('id'), service)
 
-def generate_image_slides(presentation, drive_images, service, title='What is this image?'):
-    slide_width =  presentation.get('pageSize').get('width').get('magnitude')
-    slide_height = presentation.get('pageSize').get('height').get('magnitude')
+def batch_create_image_slides(presentation, drive_images, service, requests):
     presentation_id = presentation.get('presentationId')
 
     create_slides_requests = []
 
     # Adds the images to the presentation
-    for i in range(0, len(drive_images)):
-        image_url = drive_images[i].get('image_url')
-        # slide_id = create_slides_response['replies'][i]['createSlide']['objectId']
-        image_id = 'image_{}'.format(i)
-        text_id = 'text_{}'.format(i)
-        slide_id = 'slide_{}'.format(i)
+    for image in drive_images:
+        image_url = image.get('image_url', None)
+        slide_id = 'slide_{}'.format(uuid.uuid4())
+        text_id = 'text_{}'.format(uuid.uuid4())
+        
+        single_slide_request = copy.deepcopy(requests)
+        for request in single_slide_request:
+            image_id = 'image_{}'.format(uuid.uuid4())
+            if request.get('createImage'):
+                request['createImage']['url'] = image_url if image_url else image.get(request['createImage']['url']).get('image_url')
+                request['createImage']['objectId'] = image_id
+                request['createImage']['elementProperties']['pageObjectId'] = slide_id
+            if request.get('createShape'):
+                request['createShape']['objectId'] = text_id
+                request['createShape']['elementProperties']['pageObjectId'] = slide_id
+            if request.get('insertText'):
+                request['insertText']['objectId'] = text_id
+
         create_slides_requests.extend([
             {
                 'createSlide': {
@@ -64,65 +79,14 @@ def generate_image_slides(presentation, drive_images, service, title='What is th
                         'predefinedLayout': 'BLANK'
                     }
                 }
-            },
-            {
-                'createImage': {
-                    'objectId': image_id,
-                    'url': image_url,
-                    'elementProperties': {
-                        'pageObjectId': slide_id,
-                        'size': {
-                            'height': {'magnitude': slide_height / 2, 'unit': 'EMU'},
-                            'width': {'magnitude': slide_width / 2, 'unit': 'EMU'}
-                        },
-                        'transform': {
-                            'scaleX': 1,
-                            'scaleY': 1,
-                            'translateX': slide_width / 4,
-                            'translateY': slide_height / 4,
-                            'unit': 'EMU'
-                        }
-                    }
-                }
-            },
-            {
-                "createShape": {
-                    "objectId": text_id,
-                    "shapeType": "TEXT_BOX",
-                    "elementProperties": {
-                        "pageObjectId": slide_id, 
-                        "size": {
-                            "width": {
-                                "magnitude": 200,
-                                "unit": "PT"
-                            },
-                            "height": {
-                                "magnitude": 50,
-                                "unit": "PT"
-                            }
-                        },
-                        "transform": {
-                            "scaleX": 1,
-                            "scaleY": 1,
-                            "translateX": 20, 
-                            "translateY": 20, 
-                            "unit": "PT"
-                        }
-                    }
-                }
-            },
-            {
-                'insertText': {
-                    'objectId': text_id,
-                    'text': title,
-                    'insertionIndex': 0
-                }
             }
         ])
 
+        create_slides_requests.extend(single_slide_request)
+
     service.presentations().batchUpdate(presentationId=presentation_id, body={'requests': create_slides_requests}).execute()
 
-def create_google_slide_with_image(paths_to_images, presentation_title='New Presentation'):
+def create_google_slide_with_image(question_images, presentation_title='New Presentation'):
     # Authenticate and construct the service
     creds = service_account.Credentials.from_service_account_file(SERVICE_ACCOUNT_JSON, scopes=SCOPES)
     slide_service = build('slides', 'v1', credentials=creds)
@@ -133,13 +97,21 @@ def create_google_slide_with_image(paths_to_images, presentation_title='New Pres
     drive_images = []
 
     # Upload the image to Google Drive and get the public URL
-    for image_path in paths_to_images:
-        image_url, drive_id = upload_image_to_drive(image_path, drive_service)
-        drive_images.append({'image_url': image_url, 'drive_id': drive_id})
+    for image_path in question_images:
+        element = {}
+        for key in image_path:
+            image_url, drive_id = upload_image_to_drive(image_path.get(key), drive_service)
+            element[key] = {'image_url': image_url, 'drive_id': drive_id}
+        drive_images.append(element)
 
     # Create a new presentation
     presentation = slide_service.presentations().create(body={'title': presentation_title}).execute()
     presentation_id = presentation.get('presentationId')
+
+    slide_width =  presentation.get('pageSize').get('width').get('magnitude')
+    slide_height = presentation.get('pageSize').get('height').get('magnitude')
+    x_center = slide_width / 2
+    y_center = slide_height / 2
 
     first_slide_objects = presentation.get('slides')[0].get('pageElements')
 
@@ -165,7 +137,135 @@ def create_google_slide_with_image(paths_to_images, presentation_title='New Pres
     
     slide_service.presentations().batchUpdate(presentationId=presentation_id, body={'requests': alter_content_requests}).execute()
 
-    generate_image_slides(presentation, drive_images, slide_service)
+    image_size = {
+        'height': {'magnitude': slide_height / 2, 'unit': 'EMU'},
+        'width': {'magnitude': slide_width / 2, 'unit': 'EMU'}
+    }
+
+    question_slides = [
+        {
+            'createImage': {
+                'url': 'question',
+                'elementProperties': {
+                    'size': image_size,
+                    'transform': {
+                        'scaleX': 1,
+                        'scaleY': 1,
+                        'translateX': x_center - (image_size['width']['magnitude'] / 2),
+                        'translateY': y_center - (image_size['height']['magnitude'] / 2),
+                        'unit': 'EMU'
+                    }
+                }
+            }
+        },
+        {
+            "createShape": {
+                "shapeType": "TEXT_BOX",
+                "elementProperties": {
+                    "size": {
+                        "width": {
+                            "magnitude": 200,
+                            "unit": "PT"
+                        },
+                        "height": {
+                            "magnitude": 50,
+                            "unit": "PT"
+                        }
+                    },
+                    "transform": {
+                        "scaleX": 1,
+                        "scaleY": 1,
+                        "translateX": 20, 
+                        "translateY": 20, 
+                        "unit": "PT"
+                    }
+                }
+            }
+        },
+        {
+            'insertText': {
+                'text': 'What is this image?',
+                'insertionIndex': 0
+            }
+        }
+    ]
+
+    batch_create_image_slides(presentation, drive_images, slide_service, question_slides)
+
+    image_size = {
+        'height': {'magnitude': slide_height / 2.5, 'unit': 'EMU'},
+        'width': {'magnitude': slide_width / 2.5, 'unit': 'EMU'}
+    }
+
+    space_distance = 25
+    x_left_image = convert_emu_to_pt(x_center - image_size['width']['magnitude'] - space_distance)
+    y_image = convert_emu_to_pt(y_center - (image_size['height']['magnitude'] / 2))
+    x_right_image = x_left_image + convert_emu_to_pt(image_size['width']['magnitude']) + space_distance
+
+    answer_slides = [
+        {
+            'createImage': {
+                'url': 'question',
+                'elementProperties': {
+                    'size': image_size,
+                    'transform': {
+                        'scaleX': 1,
+                        'scaleY': 1,
+                        'translateX': x_left_image,
+                        'translateY': y_image,
+                        'unit': 'PT'
+                    }
+                }
+            }
+        },
+        {
+            'createImage': {
+                'url': 'answer',
+                'elementProperties': {
+                    'size': image_size,
+                    'transform': {
+                        'scaleX': 1,
+                        'scaleY': 1,
+                        'translateX': x_right_image,
+                        'translateY': y_image,
+                        'unit': 'PT'
+                    }
+                }
+            }
+        },
+        {
+            "createShape": {
+                "shapeType": "TEXT_BOX",
+                "elementProperties": {
+                    "size": {
+                        "width": {
+                            "magnitude": 200,
+                            "unit": "PT"
+                        },
+                        "height": {
+                            "magnitude": 50,
+                            "unit": "PT"
+                        }
+                    },
+                    "transform": {
+                        "scaleX": 1,
+                        "scaleY": 1,
+                        "translateX": 20, 
+                        "translateY": 20, 
+                        "unit": "PT"
+                    }
+                }
+            }
+        },
+        {
+            'insertText': {
+                'text': 'Answer',
+                'insertionIndex': 0
+            }
+        }
+    ]
+
+    batch_create_image_slides(presentation, drive_images, slide_service, answer_slides)
 
     # Share the presentation with your personal Google account
     drive_service.permissions().create(
@@ -178,8 +278,9 @@ def create_google_slide_with_image(paths_to_images, presentation_title='New Pres
     ).execute()
 
     for image in drive_images:
-        drive_id = image.get('drive_id')
-        delete_file_from_drive(drive_id, drive_service)
+        for key in image:
+            drive_id = image.get(key).get('drive_id')
+            delete_file_from_drive(drive_id, drive_service)
 
     print(f'Created presentation with ID: {presentation_id}')
 
@@ -188,5 +289,15 @@ if __name__ == '__main__':
     drive_service = build('drive', 'v3', credentials=creds)
     clear_service_account_drive(drive_service)
 
-    image_path = ['./images/AbbeyGardens_EN-GB0442009047_UHD.jpg', './images/AbiquaFalls_EN-GB6795791915_1920x1080.jpg']
-    create_google_slide_with_image(image_path, presentation_title='Testing Guessing Game Presentation')
+    questions = [
+        {
+            'question': './images/AbbeyGardens_EN-GB0442009047_UHD.jpg',
+            'answer': './images/AbiquaFalls_EN-GB6795791915_1920x1080.jpg'
+        },
+        {
+            'question': './images/AdelieDiving_EN-GB6436349406_1920x1080.jpg',
+            'answer': './images/AlfanzinaLighthouse_EN-GB7045122942_UHD.jpg'
+        }
+    ]
+
+    create_google_slide_with_image(questions, presentation_title='Testing Guessing Game Presentation')
