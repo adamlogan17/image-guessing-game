@@ -1,10 +1,10 @@
-- [image-guessing-game](#image-guessing-game)
+- [quiz-generator](#quiz-generator)
   - [Create Service Account JSON](#create-service-account-json)
   - [Enable Google APIs](#enable-google-apis)
   - [TODOs](#todos)
   - [Useful Links](#useful-links)
 
-# image-guessing-game
+# quiz-generator
 
 This is a python programme which will randomly crop an image and place these into a google slide, for an image guessing game
 
@@ -36,16 +36,19 @@ Instructions below found [here](https://stackoverflow.com/questions/46287267/how
 
 - Decide if the `service` should be created in the `create_google_slide_with_image` function or outside it
 
-- Finish adding all cropped images to google slides
-
 - Add slack integration to get profile picture images
 - Modify to use templates for google drive
-- Separate what is currently in `main.py` into a different file called `image_cropping.py`
-- Maybe make this it's own repo?
-  - Need to make sure commits transfer
 - Make into a web app
   - Allow users to upload a folder of images to use
-  - Can download results as either `pdf`, microsoft powerpoint or as google slide file type
+
+- Change into a full quiz game
+  - Get questions from Quiz APIs
+    - <https://www.api-ninjas.com/api/trivia>
+    - <https://the-trivia-api.com/docs/v2/>
+    - <https://opentdb.com/>
+  - Make a 'guess the celebrity' option by getting the images from wikipedia
+  - Add a music round
+    - Can maybe use spotify or youtube music to get random songs, and play 10/20 seconds of it
 
 - Create a Dockerfile for the project
 
